@@ -4,7 +4,7 @@ import crypto from "crypto";
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DISCOGS_API_BASE = "https://api.discogs.com";
-const USER_AGENT = "discogs-csv-importer/2.0";
+const USER_AGENT = "discogs-bulk-importer/2.1";
 const jobs = new Map();
 
 app.use(express.json({ limit: "5mb" }));
@@ -190,8 +190,7 @@ async function runImportJob(job, { username, token, releases, folderId = 1 }) {
   job.finishedAt = new Date().toISOString();
 }
 
-app.get("/", (_req, res) => {
-  res.type("html").send(`<!doctype html>
+const html = String.raw`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -221,7 +220,7 @@ app.get("/", (_req, res) => {
   <div class="wrap">
     <div class="card">
       <h1>Discogs Bulk Importer</h1>
-      <p class="muted">Option A mode: everything imports into folder <code>1</code>. Existing copies are not skipped, so duplicates can be added as extra copies.</p>
+      <p class="muted">Everything imports into folder <code>1</code>. Existing copies are not skipped, so duplicates can be added as extra copies.</p>
       <div class="grid">
         <div>
           <label>Discogs username</label>
@@ -236,7 +235,7 @@ app.get("/", (_req, res) => {
           <input id="folderId" value="1" disabled />
         </div>
       </div>
-      <p class="muted">CSV columns accepted: <code>release_id</code>, <code>discogs_release_id</code>, <code>discogs_url</code>, <code>url</code>. Your uploaded CSV already uses <code>release_id</code>.</p>
+      <p class="muted">CSV columns accepted: <code>release_id</code>, <code>discogs_release_id</code>, <code>discogs_url</code>, <code>url</code>.</p>
     </div>
 
     <div class="card">
@@ -244,7 +243,6 @@ app.get("/", (_req, res) => {
       <div class="row">
         <button id="verifyBtn">Verify token</button>
       </div>
-      <p class="muted">This app uses your Discogs personal access token. It does not skip duplicates already in your collection.</p>
     </div>
 
     <div class="card">
@@ -292,20 +290,20 @@ app.get("/", (_req, res) => {
         summary.textContent = 'No release IDs found.';
         return;
       }
-      summary.textContent = `Found ${state.releases.length} rows with release IDs. Duplicates are preserved.`;
-      state.releases.slice(0, 200).forEach((item, idx) => {
+      summary.textContent = 'Found ' + state.releases.length + ' rows with release IDs. Duplicates are preserved.';
+      state.releases.slice(0, 200).forEach(function(item, idx) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${idx + 1}</td><td>${item.releaseId}</td><td>${item.sourceKey}</td>`;
+        tr.innerHTML = '<td>' + (idx + 1) + '</td><td>' + item.releaseId + '</td><td>' + item.sourceKey + '</td>';
         body.appendChild(tr);
       });
     }
 
-    async function readCsvFile(file) {
-      return new Promise((resolve, reject) => {
+    function readCsvFile(file) {
+      return new Promise(function(resolve, reject) {
         Papa.parse(file, {
           header: true,
           skipEmptyLines: true,
-          complete: (results) => resolve(results.data),
+          complete: function(results) { resolve(results.data); },
           error: reject
         });
       });
@@ -325,7 +323,7 @@ app.get("/", (_req, res) => {
       if (!response.ok) throw new Error(data.message || 'Preview failed');
       state.releases = data.releases;
       renderPreview();
-      setStatus(`Parsed ${data.rowCount} rows. Found ${data.releaseCount} importable release rows.`);
+      setStatus('Parsed ' + data.rowCount + ' rows. Found ' + data.releaseCount + ' importable release rows.');
     }
 
     async function verifyToken() {
@@ -344,13 +342,13 @@ app.get("/", (_req, res) => {
     }
 
     async function pollJob(jobId) {
-      const response = await fetch(`/api/jobs/${jobId}`);
+      const response = await fetch('/api/jobs/' + jobId);
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Failed to read job');
 
       const pct = data.total ? Math.round((data.processed / data.total) * 100) : 0;
       document.getElementById('bar').style.width = pct + '%';
-      document.getElementById('progressText').textContent = `${pct}% — ${data.processed}/${data.total} processed, ${data.succeeded} added, ${data.failed} failed`;
+      document.getElementById('progressText').textContent = pct + '% — ' + data.processed + '/' + data.total + ' processed, ' + data.succeeded + ' added, ' + data.failed + ' failed';
       setStatus(JSON.stringify(data.recentResults, null, 2));
 
       if (data.state === 'finished') {
@@ -376,17 +374,20 @@ app.get("/", (_req, res) => {
       if (!response.ok) throw new Error(data.message || 'Failed to start import');
       if (state.pollTimer) clearInterval(state.pollTimer);
       await pollJob(data.jobId);
-      state.pollTimer = setInterval(() => {
-        pollJob(data.jobId).catch((err) => setStatus(String(err)));
+      state.pollTimer = setInterval(function() {
+        pollJob(data.jobId).catch(function(err) { setStatus(String(err)); });
       }, 1500);
     }
 
-    document.getElementById('previewBtn').addEventListener('click', () => previewCsv().catch((err) => setStatus(String(err))));
-    document.getElementById('verifyBtn').addEventListener('click', () => verifyToken().catch((err) => setStatus(String(err))));
-    document.getElementById('startBtn').addEventListener('click', () => startImport().catch((err) => setStatus(String(err))));
+    document.getElementById('previewBtn').addEventListener('click', function() { previewCsv().catch(function(err) { setStatus(String(err)); }); });
+    document.getElementById('verifyBtn').addEventListener('click', function() { verifyToken().catch(function(err) { setStatus(String(err)); }); });
+    document.getElementById('startBtn').addEventListener('click', function() { startImport().catch(function(err) { setStatus(String(err)); }); });
   </script>
 </body>
-</html>`);
+</html>`;
+
+app.get("/", (_req, res) => {
+  res.type("html").send(html);
 });
 
 app.post('/api/preview', (req, res) => {
