@@ -248,6 +248,12 @@ const html = String.raw`<!doctype html>
     <div class="card">
       <h2>2. Upload CSV and preview</h2>
       <input id="csvFile" type="file" accept=".csv,text/csv" />
+      <div class="grid" style="margin-top:12px;">
+        <div>
+          <label>Start from row</label>
+          <input id="startRow" type="number" min="1" value="1" />
+        </div>
+      </div>
       <div class="row" style="margin-top:12px;">
         <button id="previewBtn">Preview CSV</button>
         <button id="startBtn">Start import</button>
@@ -364,11 +370,18 @@ const html = String.raw`<!doctype html>
       if (!token || !username) throw new Error('Enter username and token first.');
       if (!state.releases.length) throw new Error('Preview the CSV first.');
 
-      setStatus('Starting import job...');
+      const startRowValue = Number(document.getElementById('startRow').value || '1');
+      const startRow = Number.isFinite(startRowValue) && startRowValue > 0 ? Math.floor(startRowValue) : 1;
+      const filteredReleases = state.releases.filter(function(item) {
+        return Number(item.index) >= startRow;
+      });
+      if (!filteredReleases.length) throw new Error('No rows remain from that start row.');
+
+      setStatus('Starting import job from row ' + startRow + '...');
       const response = await fetch('/api/import/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, token, folderId: 1, releases: state.releases })
+        body: JSON.stringify({ username, token, folderId: 1, releases: filteredReleases, startRow: startRow })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Failed to start import');
@@ -437,7 +450,7 @@ app.post('/api/import/start', async (req, res) => {
     job.results.push({ ok: false, message: error.message || 'Fatal job error' });
   });
 
-  res.json({ ok: true, jobId: job.id, total: job.total, folderId: job.folderId });
+  res.json({ ok: true, jobId: job.id, total: job.total, folderId: job.folderId, startRow: req.body?.startRow || 1 });
 });
 
 app.get('/api/jobs/:id', (req, res) => {
